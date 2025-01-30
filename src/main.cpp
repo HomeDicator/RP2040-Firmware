@@ -4,12 +4,16 @@
 #include <ArduinoJson.h>
 #include <SensirionI2CSgp40.h>
 #include <VOCGasIndexAlgorithm.h>
+#include <Adafruit_AHTX0.h>
+
 
 #define SCD4X_SENSOR_READ_INTERVAL 5000  // 5 sec
 #define SGP40_SENSOR_READ_INTERVAL 5000  // 5 sec
+#define AHT20_SENSOR_READ_INTERVAL 5000  // 5 sec
 #define UART_SEND_INTERVAL 4000  // 4 sec
 #define DEBUG 1
 
+Adafruit_AHTX0 aht20;
 SensirionI2CScd4x scd4x;
 SensirionI2CSgp40 sgp40;
 VOCGasIndexAlgorithm voc_algorithm;
@@ -19,6 +23,11 @@ JsonDocument jsonData;
 unsigned long lastSendTime = 0;
 unsigned long SCD4XLastSensorReadTime = 0;
 unsigned long SGP40LastSensorReadTime = 0;
+unsigned long AHT20LastSensorReadTime = 0;
+
+bool SCD4XFound = false;
+bool SGP40Found = false;
+bool AHT20Found = false;
 
 void send_json_data() {
   String output;
@@ -100,6 +109,7 @@ void sensor_scd4x_init(void) {
       Serial.println(errorMessage);
   } else {
       printSCD4xSerialNumber(serial0, serial1, serial2);
+      SCD4XFound = true;
   }
 
   // Start Measurement
@@ -179,6 +189,7 @@ void sensor_sgp40_init(void) {
     Serial.println(errorMessage);
   } else {
     printSGP40SerialNumber(serialNumber, serialNumberSize);
+    SGP40Found = true;
   }
 
   uint16_t testResult;
@@ -215,6 +226,47 @@ void sensor_sgp40_get(void) {
 
     int32_t voc_index = voc_algorithm.process(srawVoc);
     jsonData["sgp40"]["voc_index"] = voc_index;
+  }
+}
+
+// ===============================
+// AHT20
+// ===============================
+void sensor_aht_init(void) {
+  if (!aht20.begin()) {
+    #if DEBUG
+      Serial.println("AHT20: Could not find sensor. Check wiring.");
+    #endif
+  } else {
+    #if DEBUG
+      Serial.println("AHT20: Sensor found.");
+    #endif
+    AHT20Found = true;
+  }
+}
+
+void sensor_aht_get(void) {
+  sensors_event_t humidityEvent, tempEvent;
+  aht20.getEvent(&humidityEvent, &tempEvent); // populate temp and humidity objects with fresh data
+
+  if (!isnan(tempEvent.temperature) && !isnan(humidityEvent.relative_humidity)) {  // GET DATA OK
+    temperature = tempEvent.temperature;
+    humidity = humidityEvent.relative_humidity;
+    compensationT = static_cast<uint16_t>((temperature + 45) * 65535 / 175);
+    compensationRh = static_cast<uint16_t>(humidity * 65535 / 100);
+
+    jsonData["aht20"]["status"] = "ok";
+    jsonData["aht20"]["temp"] = temperature;
+    jsonData["aht20"]["humidity"] = humidity;
+  } else {  // GET DATA FAIL
+    #if DEBUG
+      Serial.println("AHT20: GET DATA FAIL");
+    #endif
+    compensationRh = defaultCompenstaionRh;
+    compensationT = defaultCompenstaionT;
+
+    jsonData["aht20"]["status"] = "fail";
+    jsonData["aht20"]["error_msg"] = "GET DATA FROM AHT20 FAIL";
   }
 }
 
@@ -280,6 +332,7 @@ void setup() {
 
   sensor_scd4x_init();
   sensor_sgp40_init();
+  sensor_aht_init();
 
   beep_init();
   delay(500);
@@ -288,14 +341,19 @@ void setup() {
 
 void loop() {
   unsigned long currentMillis = millis();
-  if (currentMillis - SCD4XLastSensorReadTime >= SCD4X_SENSOR_READ_INTERVAL) {
+  if (SCD4XFound && currentMillis - SCD4XLastSensorReadTime >= SCD4X_SENSOR_READ_INTERVAL) {
     SCD4XLastSensorReadTime = currentMillis;  // Zeitstempel aktualisieren
     sensor_scd4x_get();
   }
 
-  if (currentMillis - SGP40LastSensorReadTime >= SCD4X_SENSOR_READ_INTERVAL) {
+  if (SGP40Found && currentMillis - SGP40LastSensorReadTime >= SCD4X_SENSOR_READ_INTERVAL) {
     SGP40LastSensorReadTime = currentMillis;  // Zeitstempel aktualisieren
     sensor_sgp40_get();
+  }
+
+  if (AHT20Found && currentMillis - AHT20LastSensorReadTime >= AHT20_SENSOR_READ_INTERVAL) {
+    AHT20LastSensorReadTime = currentMillis;  // Zeitstempel aktualisieren
+    sensor_aht_get();
   }
 
   if (currentMillis - lastSendTime >= UART_SEND_INTERVAL) {
