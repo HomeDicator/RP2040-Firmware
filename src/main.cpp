@@ -342,17 +342,17 @@ void setup() {
 void loop() {
   unsigned long currentMillis = millis();
   if (SCD4XFound && currentMillis - SCD4XLastSensorReadTime >= SCD4X_SENSOR_READ_INTERVAL) {
-    SCD4XLastSensorReadTime = currentMillis;  // Zeitstempel aktualisieren
+    SCD4XLastSensorReadTime = currentMillis;  // Update timestamp
     sensor_scd4x_get();
   }
 
   if (SGP40Found && currentMillis - SGP40LastSensorReadTime >= SCD4X_SENSOR_READ_INTERVAL) {
-    SGP40LastSensorReadTime = currentMillis;  // Zeitstempel aktualisieren
+    SGP40LastSensorReadTime = currentMillis;  // Update timestamp
     sensor_sgp40_get();
   }
 
   if (AHT20Found && currentMillis - AHT20LastSensorReadTime >= AHT20_SENSOR_READ_INTERVAL) {
-    AHT20LastSensorReadTime = currentMillis;  // Zeitstempel aktualisieren
+    AHT20LastSensorReadTime = currentMillis;  // Update timestamp
     sensor_aht_get();
   }
 
